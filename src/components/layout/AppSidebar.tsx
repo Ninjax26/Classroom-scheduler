@@ -70,13 +70,27 @@ export function AppSidebar() {
     <Sidebar className={state === "collapsed" ? "w-16" : "w-64"} collapsible="icon">
       <SidebarContent className="px-3 py-4">
         <div className="mb-8 px-3">
-          <h1 className={`font-bold text-sidebar-primary-foreground ${state === "collapsed" ? "text-sm" : "text-xl"}`}>
-            {state === "collapsed" ? "SC" : "Smart Classroom"}
-          </h1>
-          {state !== "collapsed" && (
-            <p className="text-xs text-sidebar-foreground/70 mt-1">
-              Timetable Scheduler
-            </p>
+          <div className="flex items-center gap-3 mb-2">
+            <img 
+              src="/image.png" 
+              alt="Class Schedule Zen Logo" 
+              className={`${state === "collapsed" ? "h-8 w-8" : "h-10 w-10"} rounded-lg object-contain`}
+            />
+            {state !== "collapsed" && (
+              <div>
+                <h1 className="font-bold text-sidebar-primary-foreground text-xl">
+                  Smart Classroom
+                </h1>
+                <p className="text-xs text-sidebar-foreground/70">
+                  Timetable Scheduler
+                </p>
+              </div>
+            )}
+          </div>
+          {state === "collapsed" && (
+            <h1 className="font-bold text-sidebar-primary-foreground text-sm text-center">
+              SC
+            </h1>
           )}
         </div>
 
