@@ -483,7 +483,7 @@ export default function Batches() {
                         <DropdownMenuItem>Export Data</DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive"
-                          onClick={() => handleDeleteBatch(batch.id)}
+                          onClick={() => { if (confirm('Delete this batch?')) handleDeleteBatch(batch.id) }}
                         >
                           Delete Batch
                         </DropdownMenuItem>

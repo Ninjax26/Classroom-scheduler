@@ -36,12 +36,31 @@ cd class-schedule-zen
 npm install
 ```
 
-3. Start the development server:
+3. Create environment file:
+```
+cp .env.example .env
+```
+
+4. Start the development server:
 ```sh
 npm run dev
 ```
 
-4. Open [http://localhost:5173](http://localhost:5173) in your browser.
+5. Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+## Environment variables
+
+Create `.env` based on `.env.example`:
+
+```
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+## Supabase setup
+
+- Run `supabase-setup.sql` in the Supabase SQL editor to create tables, policies, and seed data.
+- See `AUTH_SETUP.md` and `GOOGLE_OAUTH_SETUP.md` for configuring auth.
 
 ## Available Scripts
 

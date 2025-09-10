@@ -447,7 +447,7 @@ export default function Subjects() {
                         <DropdownMenuItem>Export Data</DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive"
-                          onClick={() => handleDeleteSubject(subject.id)}
+                          onClick={() => { if (confirm('Delete this subject?')) handleDeleteSubject(subject.id) }}
                         >
                           Delete Subject
                         </DropdownMenuItem>

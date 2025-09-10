@@ -494,7 +494,7 @@ export default function Faculty() {
                         <DropdownMenuItem>Export Data</DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive"
-                          onClick={() => handleDeleteFaculty(faculty.id)}
+                          onClick={() => { if (confirm('Delete this faculty member?')) handleDeleteFaculty(faculty.id) }}
                         >
                           Delete Faculty
                         </DropdownMenuItem>

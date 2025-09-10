@@ -316,7 +316,9 @@ export default function Rooms() {
                         <DropdownMenuItem>Export Data</DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive"
-                          onClick={() => handleDeleteRoom(room.id)}
+                          onClick={() => {
+                            if (confirm('Delete this room?')) handleDeleteRoom(room.id)
+                          }}
                         >
                           Delete Room
                         </DropdownMenuItem>
