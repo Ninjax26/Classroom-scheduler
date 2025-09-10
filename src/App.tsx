@@ -22,6 +22,7 @@ import FacultyRules from "./pages/constraints/FacultyRules";
 import SubjectRules from "./pages/constraints/SubjectRules";
 import RoomRules from "./pages/constraints/RoomRules";
 import AdvancedSettings from "./pages/constraints/AdvancedSettings";
+import Timetable from "./pages/Timetable";
 
 const queryClient = new QueryClient();
 
@@ -79,7 +80,7 @@ function AppContent() {
                 {/* Placeholder routes for other pages */}
                 <Route path="/scheduler" element={<ProtectedRoute><div className="p-8 text-center text-muted-foreground">Scheduler coming soon...</div></ProtectedRoute>} />
                 <Route path="/review" element={<ProtectedRoute><div className="p-8 text-center text-muted-foreground">Review workflow coming soon...</div></ProtectedRoute>} />
-                <Route path="/timetable" element={<ProtectedRoute><div className="p-8 text-center text-muted-foreground">Published timetables coming soon...</div></ProtectedRoute>} />
+                <Route path="/timetable" element={<ProtectedRoute><Timetable /></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute><div className="p-8 text-center text-muted-foreground">Reports coming soon...</div></ProtectedRoute>} />
                 
                 {/* Auth routes - redirect to dashboard if already logged in */}

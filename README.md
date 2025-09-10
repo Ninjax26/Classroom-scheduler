@@ -62,6 +62,27 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 - Run `supabase-setup.sql` in the Supabase SQL editor to create tables, policies, and seed data.
 - See `AUTH_SETUP.md` and `GOOGLE_OAUTH_SETUP.md` for configuring auth.
 
+## Backend API (Timetable Generation)
+
+The timetable generation uses a Python FastAPI backend:
+
+1. **Install Python 3.8+** and pip
+2. **Start the backend:**
+   ```bash
+   cd backend
+   ./start.sh
+   ```
+   Or manually:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+3. **Backend runs on:** `http://localhost:8000`
+4. **API docs:** `http://localhost:8000/docs`
+
+The backend provides AI-powered timetable generation with conflict resolution, room optimization, and constraint handling.
+
 ## Available Scripts
 
 - `npm run dev` - Start development server
