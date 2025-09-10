@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Search, Filter, MoreHorizontal, MapPin, Users, Monitor } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Search, Filter, MoreHorizontal, MapPin, Users, Monitor, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,60 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AddRoomDialog } from "@/components/rooms/AddRoomDialog";
+import { supabase, Database } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 
-interface Room {
-  id: string;
-  name: string;
-  type: "classroom" | "lab" | "auditorium" | "seminar";
-  capacity: number;
-  building: string;
-  floor: number;
-  equipment: string[];
-  status: "available" | "occupied" | "maintenance";
-}
-
-const mockRooms: Room[] = [
-  {
-    id: "1",
-    name: "A-101",
-    type: "classroom",
-    capacity: 40,
-    building: "Academic Block A",
-    floor: 1,
-    equipment: ["Projector", "Whiteboard", "AC"],
-    status: "available"
-  },
-  {
-    id: "2",
-    name: "B-203",
-    type: "lab",
-    capacity: 30,
-    building: "Academic Block B",
-    floor: 2,
-    equipment: ["Computers", "Projector", "AC", "Lab Equipment"],
-    status: "occupied"
-  },
-  {
-    id: "3",
-    name: "C-301",
-    type: "auditorium",
-    capacity: 150,
-    building: "Academic Block C",
-    floor: 3,
-    equipment: ["Sound System", "Projector", "Stage", "AC"],
-    status: "available"
-  },
-  {
-    id: "4",
-    name: "A-105",
-    type: "seminar",
-    capacity: 20,
-    building: "Academic Block A",
-    floor: 1,
-    equipment: ["Smart Board", "Video Conferencing", "AC"],
-    status: "maintenance"
-  }
-];
+type Room = Database['public']['Tables']['rooms']['Row'];
 
 const statusColors = {
   available: "bg-success/10 text-success border-success/20",
@@ -94,11 +45,118 @@ const typeColors = {
 };
 
 export default function Rooms() {
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const { toast } = useToast();
 
-  const filteredRooms = mockRooms.filter(room => {
+  // Fetch rooms from Supabase
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching rooms:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch rooms. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setRooms(data || []);
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch rooms. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add new room
+  const handleAddRoom = async (roomData: Database['public']['Tables']['rooms']['Insert']) => {
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .insert([roomData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error adding room:', error);
+        toast({
+          title: "Error",
+          description: "Failed to add room. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setRooms(prev => [data, ...prev]);
+      toast({
+        title: "Success",
+        description: "Room added successfully!",
+      });
+    } catch (error) {
+      console.error('Error adding room:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add room. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Delete room
+  const handleDeleteRoom = async (roomId: string) => {
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', roomId);
+
+      if (error) {
+        console.error('Error deleting room:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete room. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setRooms(prev => prev.filter(room => room.id !== roomId));
+      toast({
+        title: "Success",
+        description: "Room deleted successfully!",
+      });
+    } catch (error) {
+      console.error('Error deleting room:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete room. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchRooms();
+  }, []);
+
+  const filteredRooms = rooms.filter(room => {
     const matchesSearch = room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          room.building.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === "all" || room.type === typeFilter;
@@ -117,7 +175,10 @@ export default function Rooms() {
             Manage classrooms, labs, and other learning spaces
           </p>
         </div>
-        <Button className="bg-gradient-primary hover:opacity-90">
+        <Button 
+          className="bg-gradient-primary hover:opacity-90"
+          onClick={() => setIsAddDialogOpen(true)}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Add Room
         </Button>
@@ -172,20 +233,33 @@ export default function Rooms() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Room</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Building</TableHead>
-                <TableHead>Capacity</TableHead>
-                <TableHead>Equipment</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRooms.map((room) => (
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading rooms...</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Room</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Building</TableHead>
+                  <TableHead>Capacity</TableHead>
+                  <TableHead>Equipment</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRooms.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No rooms found. Click "Add Room" to get started.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredRooms.map((room) => (
                 <TableRow key={room.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
@@ -240,18 +314,30 @@ export default function Rooms() {
                         <DropdownMenuItem>Edit Room</DropdownMenuItem>
                         <DropdownMenuItem>View Schedule</DropdownMenuItem>
                         <DropdownMenuItem>Export Data</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={() => handleDeleteRoom(room.id)}
+                        >
                           Delete Room
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
+
+      {/* Add Room Dialog */}
+      <AddRoomDialog
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
+        onRoomAdded={handleAddRoom}
+      />
     </div>
   );
 }
