@@ -327,3 +327,52 @@ export function useBatches() {
   return { batches, loading, error, addBatch, updateBatch, deleteBatch, refetch: fetchBatches };
 }
 
+// Rooms Hook
+export function useRooms() {
+  type Row = Database['public']['Tables']['rooms']['Row'];
+  const [rooms, setRooms] = useState<Array<{
+    id: string;
+    name: string;
+    type: 'classroom' | 'lab' | 'auditorium' | 'seminar';
+    capacity: number;
+    building: string;
+    floor: number;
+    equipment: string[];
+    status: 'available' | 'occupied' | 'maintenance';
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const mapRowToUi = (r: Row) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    capacity: r.capacity,
+    building: r.building,
+    floor: r.floor,
+    equipment: r.equipment || [],
+    status: r.status,
+  });
+
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setRooms((data || []).map(mapRowToUi));
+    } catch (e: any) {
+      setError(e.message || 'Failed to fetch rooms');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchRooms(); }, []);
+
+  return { rooms, loading, error, refetch: fetchRooms };
+}
+

@@ -46,7 +46,8 @@ class TimetableRequest(BaseModel):
     one_subject_per_day: bool = True
     rotate_start: bool = True
     randomize_within_day: bool = False
-    rng_seed: Optional[int] = 42
+    # If provided, generation will be reproducible. If None, results vary per call.
+    rng_seed: Optional[int] = None
 
 class TimetableResponse(BaseModel):
     time_assignment: Dict[int, int]  # event_id -> slot
@@ -100,17 +101,19 @@ def is_room_available(room: Room, slot: int, room_assignments: Dict[Tuple[str, i
     return (room.id, slot) not in room_assignments
 
 def find_suitable_rooms(event: Event, rooms: List[Room]) -> List[Room]:
-    """Find rooms that match event requirements."""
+    """Find rooms that match event requirements by type only.
+    Capacity will be optimized later with a best-fit or fallback strategy.
+    """
     suitable = []
     for room in rooms:
-        if (room.room_type == event.room_type_required and room.capacity >= event.min_capacity):
+        if room.room_type == event.room_type_required:
             suitable.append(room)
     return suitable
 
 def assign_slots_and_rooms_greedy(
     events: List[Event],
     rooms: List[Room],
-    graph: Dict[int, Set[int]],
+    graph: Dict[int, Set[int]], 
     num_days: int,
     periods_per_day: int,
     max_classes_per_day_per_batch: Optional[Dict[str, int]] = None,
@@ -120,6 +123,8 @@ def assign_slots_and_rooms_greedy(
     rng_seed: Optional[int] = 42
 ) -> Tuple[Dict[int, int], Dict[int, str], List[int]]:
     """Main timetable generation algorithm."""
+    # If a specific rng_seed is provided, seed for reproducibility.
+    # Otherwise, do not seed here so each invocation can produce a different timetable.
     if rng_seed is not None:
         random.seed(rng_seed)
     
@@ -139,6 +144,8 @@ def assign_slots_and_rooms_greedy(
     time_assignment: Dict[int, int] = {}
     room_assignment: Dict[int, str] = {}
     room_occupancy: Dict[Tuple[str, int], int] = {}
+    room_total_usage: Dict[str, int] = defaultdict(int)
+    room_usage_per_day: Dict[Tuple[str, int], int] = defaultdict(int)
     classes_per_day: Dict[Tuple[str, int], int] = defaultdict(int)
     subject_on_day: Set[Tuple[str, str, int]] = set()
     
@@ -198,22 +205,38 @@ def assign_slots_and_rooms_greedy(
             if any((n in time_assignment and time_assignment[n] == s) for n in neighbors):
                 continue
             
-            # Try to find an available room
-            available_room = None
-            suitable_rooms_sorted = sorted(suitable_rooms, key=lambda r: r.capacity)
+            # Get all available rooms for this slot and type
+            available_rooms = [r for r in suitable_rooms if is_room_available(r, s, room_occupancy)]
             
-            for room in suitable_rooms_sorted:
-                if is_room_available(room, s, room_occupancy):
-                    available_room = room
-                    break
-            
-            if available_room is None:
+            if not available_rooms:
                 continue
+            
+            # Room selection strategy: single scoring across ALL available rooms
+            #  - Primary: least total usage (to balance utilization)
+            #  - Secondary: adequacy (rooms meeting capacity get priority but not absolute)
+            #  - Tertiary: best fit (smaller adequate gap or larger inadequate capacity)
+            #  - Quaternary: rotate by idx+slot to break ties
+            def score(room: Room) -> Tuple[int, int, int, int, int]:
+                per_day_usage = room_usage_per_day.get((room.id, day), 0)
+                usage = room_total_usage.get(room.id, 0)
+                adequacy_penalty = 0 if room.capacity >= e.min_capacity else 1
+                if adequacy_penalty == 0:
+                    fit_score = room.capacity - e.min_capacity  # smaller nonnegative is better
+                else:
+                    fit_score = -(room.capacity)  # larger capacity (less inadequate) is better
+                # Prefer rooms with lower per-day usage first, then total usage
+                tiebreak = (idx + s + hash(room.id)) % 97
+                return (per_day_usage, usage, adequacy_penalty, fit_score, tiebreak)
+
+            available_rooms.sort(key=score)
+            selected_room = available_rooms[0]
             
             # All checks passed → assign time and room
             time_assignment[e.id] = s
-            room_assignment[e.id] = available_room.id
-            room_occupancy[(available_room.id, s)] = e.id
+            room_assignment[e.id] = selected_room.id
+            room_occupancy[(selected_room.id, s)] = e.id
+            room_total_usage[selected_room.id] += 1
+            room_usage_per_day[(selected_room.id, day)] += 1
             classes_per_day[(e.batch, day)] += 1
             
             if one_subject_per_day:

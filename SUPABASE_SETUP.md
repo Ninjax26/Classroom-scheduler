@@ -120,3 +120,4 @@ The application is now fully integrated with Supabase and ready for production u
 
 
 
+

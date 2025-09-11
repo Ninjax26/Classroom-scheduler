@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Calendar, Clock, MapPin, Users, AlertCircle, CheckCircle } from "lucide-react";
 import { TimetableApiService, Event, Room, TimetableSlot } from "@/services/timetableApi";
+import { useFaculty, useSubjects, useBatches, useRooms } from "@/hooks/useSupabase";
 import { useToast } from "@/hooks/use-toast";
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -17,46 +18,128 @@ export default function Timetable() {
   const [roomUtilization, setRoomUtilization] = useState<Record<string, { used: number; total: number; percentage: number }>>({});
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState("");
+  const [roomNameById, setRoomNameById] = useState<Record<string, string>>({});
   const { toast } = useToast();
+  const { faculty } = useFaculty();
+  const { subjects } = useSubjects();
+  const { batches } = useBatches();
+  const { rooms } = useRooms();
 
-  // Sample data - in real app, this would come from your Supabase data
-  const sampleEvents: Event[] = [
-    { id: 1, batch: "CS2024A", subject: "Mathematics", teacher: "Dr. Smith", room_type_required: "classroom", min_capacity: 35 },
-    { id: 2, batch: "CS2024A", subject: "Mathematics", teacher: "Dr. Smith", room_type_required: "classroom", min_capacity: 35 },
-    { id: 3, batch: "CS2024A", subject: "Programming", teacher: "Prof. Johnson", room_type_required: "lab", min_capacity: 25 },
-    { id: 4, batch: "CS2024A", subject: "Physics", teacher: "Dr. Brown", room_type_required: "lab", min_capacity: 30 },
-    { id: 5, batch: "CS2024B", subject: "Mathematics", teacher: "Dr. Smith", room_type_required: "classroom", min_capacity: 30 },
-    { id: 6, batch: "CS2024B", subject: "Chemistry", teacher: "Dr. Wilson", room_type_required: "lab", min_capacity: 25 },
-    { id: 7, batch: "CS2024B", subject: "English", teacher: "Ms. Davis", room_type_required: "classroom", min_capacity: 30 },
-  ];
+  // Build API payloads from DB data
+  const buildRooms = (): Room[] => {
+    return rooms
+      .filter(r => r.status !== 'maintenance')
+      .map<Room>(r => ({ id: r.id, room_type: r.type === 'lab' ? 'lab' : 'classroom', capacity: r.capacity }));
+  };
 
-  const sampleRooms: Room[] = [
-    { id: "CR-101", room_type: "classroom", capacity: 40 },
-    { id: "CR-102", room_type: "classroom", capacity: 35 },
-    { id: "CR-103", room_type: "classroom", capacity: 30 },
-    { id: "LAB-201", room_type: "lab", capacity: 25 },
-    { id: "LAB-202", room_type: "lab", capacity: 30 },
-  ];
+  // Build events for all batches and subjects. If a batch has no assignedSubjects,
+  // generate events for all subjects (cross-product fallback).
+  // Teacher assignment: round-robin per department, fallback to any faculty or 'TBD'.
+  const buildEvents = (): Event[] => {
+    const subjectById = new Map(subjects.map(s => [s.id, s]));
+    const subjectByCode = new Map(subjects.map(s => [s.subjectCode, s]));
+    const subjectByName = new Map(subjects.map(s => [s.subjectName, s]));
+    const facultyByDept = new Map<string, string[]>();
+    faculty.forEach(f => {
+      const list = facultyByDept.get(f.department) || [];
+      list.push(f.name);
+      facultyByDept.set(f.department, list);
+    });
+    const rrIndexByDept = new Map<string, number>();
+
+    const pickTeacher = (department: string): string => {
+      const list = facultyByDept.get(department) || [];
+      if (list.length === 0) return faculty[0]?.name || 'TBD';
+      const idx = rrIndexByDept.get(department) || 0;
+      const teacher = list[idx % list.length];
+      rrIndexByDept.set(department, (idx + 1) % list.length);
+      return teacher;
+    };
+
+    const events: Event[] = [];
+    // Compute max capacity available per room type to cap min_capacity
+    const classroomMax = rooms.filter(r => r.type !== 'lab').reduce((m, r) => Math.max(m, r.capacity), 0);
+    const labMax = rooms.filter(r => r.type === 'lab').reduce((m, r) => Math.max(m, r.capacity), 0);
+    let nextId = 1;
+    batches.forEach(b => {
+      const subjectIds = (b.assignedSubjects && b.assignedSubjects.length > 0)
+        ? b.assignedSubjects
+        : // Fallback: all subjects if none assigned
+          subjects.map(s => s.id);
+
+      subjectIds.forEach(subId => {
+        // Resolve subject via id, then code, then name
+        const subj = subjectById.get(subId) || subjectByCode.get(subId) || subjectByName.get(subId);
+        if (!subj) return;
+        const teacherName = pickTeacher(subj.department);
+        const weekly = subj.weeklyHours || 1;
+        const subjectTitle = subj.subjectName || subj.subjectCode || 'Subject';
+        const maybeLabStrings = [subjectTitle, subj.description || '', subj.subjectCode || ''];
+        const requiresLab = maybeLabStrings.some(s => (s || '').toLowerCase().includes('lab'));
+        for (let i = 0; i < weekly; i++) {
+          const requiredLab = requiresLab;
+          const maxCap = requiredLab ? labMax : classroomMax;
+          const desired = (b.size as number) || 30;
+          const minCap = maxCap > 0 ? Math.min(desired, maxCap) : desired;
+          events.push({
+            id: nextId++,
+            batch: b.batchId,
+            subject: subjectTitle,
+            teacher: teacherName,
+            room_type_required: requiredLab ? 'lab' : 'classroom',
+            min_capacity: minCap,
+            span_slots: 1,
+          });
+        }
+      });
+    });
+    return events;
+  };
 
   const generateTimetable = async () => {
     setLoading(true);
     try {
+      // Ensure backend is reachable
+      try {
+        await TimetableApiService.healthCheck();
+      } catch (e: any) {
+        toast({
+          title: "Backend unavailable",
+          description: "Cannot reach timetable service. Check VITE_API_URL and backend server.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const apiEvents = buildEvents();
+      const apiRooms = buildRooms();
+
+      if (apiRooms.length === 0) {
+        toast({ title: "No rooms available", description: "Add rooms in Data > Rooms.", variant: "destructive" });
+        return;
+      }
+      if (apiEvents.length === 0) {
+        toast({ title: "No events to schedule", description: "Ensure batches have assigned subjects.", variant: "destructive" });
+        return;
+      }
+
       const response = await TimetableApiService.generateTimetable({
-        events: sampleEvents,
-        rooms: sampleRooms,
+        events: apiEvents,
+        rooms: apiRooms,
         num_days: 5,
         periods_per_day: 6,
-        max_classes_per_day_per_batch: { "CS2024A": 3, "CS2024B": 3 },
+        max_classes_per_day_per_batch: Object.fromEntries(batches.map(b => [b.batchId, 3])),
         one_subject_per_day: true,
         rotate_start: true,
         randomize_within_day: true,
-        rng_seed: 42,
+        // Use a dynamic seed so successive generations differ. Remove to let backend be fully random
+        rng_seed: Date.now(),
       });
 
       const displayData = TimetableApiService.convertToDisplayFormat(
         response,
-        sampleEvents,
-        sampleRooms,
+        apiEvents,
+        apiRooms,
         5,
         6
       );
@@ -64,6 +147,7 @@ export default function Timetable() {
       setTimetable(displayData.timetable);
       setUnassigned(displayData.unassigned);
       setRoomUtilization(displayData.roomUtilization);
+      setRoomNameById(Object.fromEntries(rooms.map(r => [r.id, r.name])));
       setSuccess(response.success);
       setMessage(response.message);
 
@@ -72,11 +156,11 @@ export default function Timetable() {
         description: response.message,
         variant: response.success ? "default" : "destructive",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Timetable generation failed:", error);
       toast({
         title: "Error",
-        description: "Failed to generate timetable. Please check if the backend is running.",
+        description: error?.message || "Failed to generate timetable.",
         variant: "destructive",
       });
     } finally {
@@ -208,7 +292,7 @@ export default function Timetable() {
                                     {slot.batch}
                                   </Badge>
                                   <Badge className={getRoomTypeColor(slot.room_type)}>
-                                    {slot.room_id}
+                                    {roomNameById[slot.room_id] || slot.room_id}
                                   </Badge>
                                 </div>
                                 <div className="font-medium">{slot.subject}</div>
@@ -241,11 +325,11 @@ export default function Timetable() {
               {Object.entries(roomUtilization).map(([roomId, stats]) => (
                 <div key={roomId} className="p-4 border rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{roomId}</span>
+                    <span className="font-medium">{rooms.find(r => r.id === roomId)?.name || roomId}</span>
                     <Badge className={getRoomTypeColor(
-                      sampleRooms.find(r => r.id === roomId)?.room_type || 'classroom'
+                      (rooms.find(r => r.id === roomId)?.type === 'lab') ? 'lab' : 'classroom'
                     )}>
-                      {sampleRooms.find(r => r.id === roomId)?.room_type || 'classroom'}
+                      {(rooms.find(r => r.id === roomId)?.type === 'lab') ? 'lab' : 'classroom'}
                     </Badge>
                   </div>
                   <div className="space-y-1">

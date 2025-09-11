@@ -88,6 +88,11 @@ export default function Subjects() {
   });
 
   const handleAddSubject = async () => {
+    // Basic client-side validation for required fields
+    if (!formData.subjectCode || !formData.subjectName || !formData.department || !formData.weeklyHours) {
+      toast({ title: "Missing fields", description: "Subject Code, Name, Department and Weekly Hours are required.", variant: "destructive" });
+      return;
+    }
     try {
       await addSubject({
         subjectCode: formData.subjectCode,
@@ -102,8 +107,8 @@ export default function Subjects() {
       toast({ title: "Success", description: "Subject added" });
       setIsAddModalOpen(false);
       resetForm();
-    } catch (e) {
-      toast({ title: "Error", description: "Failed to add subject", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Failed to add subject", variant: "destructive" });
     }
   };
 
@@ -137,8 +142,8 @@ export default function Subjects() {
       toast({ title: "Success", description: "Subject updated" });
       setEditingSubject(null);
       resetForm();
-    } catch (e) {
-      toast({ title: "Error", description: "Failed to update subject", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Failed to update subject", variant: "destructive" });
     }
   };
 
@@ -146,8 +151,8 @@ export default function Subjects() {
     try {
       await deleteSubject(id);
       toast({ title: "Success", description: "Subject deleted" });
-    } catch (e) {
-      toast({ title: "Error", description: "Failed to delete subject", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.message || "Failed to delete subject", variant: "destructive" });
     }
   };
   if (loading) {

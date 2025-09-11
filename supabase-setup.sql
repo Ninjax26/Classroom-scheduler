@@ -126,3 +126,4 @@ INSERT INTO batches (batch_id, department, year, size, assigned_subjects, start_
 
 
 
+
